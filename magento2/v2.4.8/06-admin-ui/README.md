@@ -1,6 +1,20 @@
-# Topic 6: Admin UI — Routes, Menus, Configuration, ACL & Grids
+# Topic 06: Admin UI — Routes, Menus, Configuration, ACL & Grids
 
 **Goal:** Build a complete admin interface for your module — navigation entry, configuration page, permission system, and data grid with edit form.
+
+---
+
+## Table of Contents
+
+1. [Admin Routes](#topic-1-admin-routes)
+2. [Admin Menu](#topic-2-admin-menu)
+3. [System Configuration](#topic-3-system-configuration)
+4. [ACL — Roles & Permissions](#topic-4-acl--roles--permissions)
+5. [Admin UI Component Grids](#topic-5-admin-ui-component-grids)
+6. [Admin Form UI Component](#topic-6-admin-form-ui-component)
+7. [File & Image Upload in Admin Forms](#topic-7-file--image-upload-in-admin-forms)
+8. [Extending Native Sales Order UI](#extending-native-sales-order-ui)
+9. [Supplemental — Security & ACL](#supplemental--security--acl)
 
 ---
 
@@ -1244,7 +1258,659 @@ $review->setAttachmentFile('http://example.com/media/import/' . $fileName);
 
 ---
 
-## Reading List
+## Extending Native Sales Order UI
+
+This section covers patterns for extending Magento's native Sales Order admin pages.
+Unlike the `Training_Review` module which builds new admin pages from scratch, these
+patterns modify existing Magento pages. All examples extend the `Sales::sales_order`
+ACL hierarchy.
+
+> **⚠️ Production Warning:** Extending native Magento pages is riskier than building
+> custom pages. Native pages may change between minor versions, breaking your
+> customizations. Always test after Magento upgrades and use dependency injection
+> preferences sparingly.
+
+---
+
+### Extending sales_order_grid Columns
+
+The order grid (`sales_order_view.xml` handle) uses a UI Component listing. You can
+add custom columns via `di.xml` preference and a custom column class.
+
+**When to Use:**
+- Displaying order attributes that live on the `sales_order` table or joined tables
+- Adding columns that reference external data (CRM notes, ERP sync status)
+- Displaying calculated fields (margin, fulfillment status from external system)
+
+**Key Files:**
+| File | Purpose |
+|------|---------|
+| `etc/di.xml` | Preference for column pool |
+| `Ui/Component/Listing/Column/OrderCustomColumn.php` | Column renderer |
+| `view/adminhtml/ui_component/sales_order_listing.xml` | Optional column config |
+
+**di.xml — Register Column Pool Extension:**
+
+```xml
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <preference for="Magento\Sales\Ui\Component\Listing\Column\ColumnPool"
+                type="Training\Sales\Ui\Component\Listing\Column\ColumnPool"/>
+</config>
+```
+
+**ColumnPool.php — Add Custom Column to Pool:**
+
+```php
+<?php
+// Ui/Component/Listing/Column/ColumnPool.php
+declare(strict_types=1);
+
+namespace Training\Sales\Ui\Component\Listing\Column;
+
+use Magento\Framework\Data\Collection\AbstractDb;
+use Magento\Framework\View\Element\UiComponent\DataSourceDonor;
+
+class ColumnPool extends \Magento\Sales\Ui\Component\Listing\ColumnPool
+{
+    /**
+     * @param AbstractDb $collection
+     * @param DataSourceDonor $dataSourceDonor
+     * @return array
+     */
+    public function getColumns(AbstractDb $collection, DataSourceDonor $dataSourceDonor): array
+    {
+        $columns = parent::getColumns($collection, $dataSourceDonor);
+
+        // Register custom column — this key must match column name in listing XML
+        $columns['erp_status'] = [
+            'class' => \Training\Sales\Ui\Component\Listing\Column\ErpStatus::class,
+            'name' => 'erp_status',
+            'config' => [
+                'label' => __('ERP Status'),
+                'sortable' => true,
+            ],
+        ];
+
+        return $columns;
+    }
+}
+```
+
+**OrderCustomColumn.php — Column Renderer:**
+
+```php
+<?php
+// Ui/Component/Listing/Column/ErpStatus.php
+declare(strict_types=1);
+
+namespace Training\Sales\Ui\Component\Listing\Column;
+
+use Magento\Framework\View\Element\UiComponent\ContextInterface;
+use Magento\Framework\View\Element\UiComponentFactory;
+use Magento\Ui\Component\Listing\Columns\Column;
+
+class ErpStatus extends Column
+{
+    public function __construct(
+        ContextInterface $context,
+        UiComponentFactory $uiComponentFactory,
+        array $components = [],
+        array $data = []
+    ) {
+        parent::__construct($context, $uiComponentFactory, $components, $data);
+    }
+
+    public function prepareDataSource(array $dataSource): array
+    {
+        if (isset($dataSource['data']['items'])) {
+            foreach ($dataSource['data']['items'] as &$item) {
+                $erpStatus = $item['erp_status'] ?? null;
+                $item['erp_status'] = $this->formatStatus($erpStatus);
+            }
+        }
+        return $dataSource;
+    }
+
+    private function formatStatus(?string $status): string
+    {
+        if ($status === null || $status === '') {
+            return '<span class="_grid-hint">—</span>';
+        }
+        $map = [
+            'pending' => '<span class="Olive">Pending Sync</span>',
+            'synced' => '<span class="note-grid__label">Synced</span>',
+            'failed' => '<span class="admin__page- lox-warning">Failed</span>',
+        ];
+        return $map[$status] ?? htmlspecialchars((string)$status);
+    }
+}
+```
+
+**sales_order_listing.xml — Declare Column (if not auto-discovered):**
+
+```xml
+<?xml version="1.0"?>
+<listing xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="urn:magento:module:Ui/Component/etc/listing.xsd">
+    <columns name="sales_order_columns">
+        <column name="erp_status" class="Training\Sales\Ui\Component\Listing\Column\ErpStatus">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">text</item>
+                    <item name="sortable" xsi:type="boolean">true</item>
+                    <item name="label" xsi:type="string" translate="true">ERP Status</item>
+                </item>
+            </argument>
+        </column>
+    </columns>
+</listing>
+```
+
+> **⚠️ Production Warning — Column Extension:** Adding columns to `sales_order_grid`
+> is version-sensitive. Magento may restructure the column pool in any minor release.
+> Consider using a plugin on `getColumns()` instead of full preference replacement to
+> reduce break risk.
+
+**ACL Resources Required:**
+
+| Resource ID | Displayed in ACL |
+|------------|------------------|
+| `Sales::sales_order` | Orders (parent) |
+| `Sales::sales_order_view` | View Orders |
+
+Your module must declare at least `Sales::sales_order_view` in its `acl.xml`.
+
+---
+
+### Order View Page Fieldset/Tab Extension
+
+The order view page (`sales_order_view.xml` layout handle) organizes fields into tabs
+and fieldsets. You can add custom fieldsets via XML layout.
+
+**When to Use:**
+- Displaying order metadata that doesn't belong in the standard fields
+- Adding fieldsets for third-party integrations (tracking, warranty, gift notes)
+- Organizing custom order attributes into logical groups
+
+**Key Files:**
+| File | Purpose |
+|------|---------|
+| `view/adminhtml/layout/sales_order_view.xml` | Layout handle for order view |
+| `Block/Adminhtml/Order/View/Tab/Customfieldset.php` | Tab block class |
+| `Block/Adminhtml/Order/View/Tab/Info.php` | Override info tab (if needed) |
+
+**sales_order_view.xml — Add Custom Fieldset:**
+
+```xml
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceBlock name="order_info">
+            <!-- Insert after the standard info block -->
+            <block class="Training\Sales\Block\Adminhtml\Order\View\Tab\CustomData"
+                   name="sales_order_custom_tab"
+                   template="Training_Sales::order/view/tab/custom_data.phtml"
+                   after="order_info">
+                <arguments>
+                    <argument name="group" xsi:type="array">
+                        <item name="class" xsi:type="string">custom-fieldset</item>
+                        <item name="label" xsi:type="string">Custom Data</item>
+                    </argument>
+                </arguments>
+            </block>
+        </referenceBlock>
+
+        <!-- Alternative: add via action buttons toolbar -->
+        <referenceBlock name="order_tab_info">
+            <block class="Training\Sales\Block\Adminhtml\Order\View\Tab\ErpNotes"
+                   name="sales_order_erp_notes"
+                   template="Training_Sales::order/view/tab/erp_notes.phtml"/>
+        </referenceBlock>
+    </body>
+</page>
+```
+
+**Info.php — Override Order Info Tab:**
+
+```php
+<?php
+// Block/Adminhtml/Order/View/Tab/Info.php
+declare(strict_types=1);
+
+namespace Training\Sales\Block\Adminhtml\Order\View\Tab;
+
+use Magento\Sales\Block\Adminhtml\Order\View\Tab\Info as BaseInfo;
+
+class Info extends BaseInfo
+{
+    /**
+     * Retrieve all data for custom fieldsets.
+     *
+     * @return array
+     */
+    public function getCustomData(): array
+    {
+        $order = $this->getOrder();
+        if (!$order) {
+            return [];
+        }
+
+        return [
+            'erp_order_id' => $order->getData('erp_order_id'),
+            'gift_message' => $order->getData('gift_message'),
+            'is_expedited' => $order->getData('is_expedited'),
+        ];
+    }
+
+    /**
+     * Check if expedited flag is set.
+     *
+     * @return bool
+     */
+    public function isExpeditedOrder(): bool
+    {
+        return (bool)$this->getOrder()?->getData('is_expedited');
+    }
+}
+```
+
+**custom_data.phtml — Template:**
+
+```php
+<?php
+/** @var \Magento\Sales\Block\Adminhtml\Order\View\Tab\Info $block */
+/** @var \Magento\Framework\Escaper $escaper */
+$customData = $block->getCustomData();
+?>
+<div class="admin__page-section-item order-custom-data">
+    <div class="admin__page-section-item-title">
+        <span><?= $escaper->escapeHtml(__('Custom Data')) ?></span>
+    </div>
+    <div class="admin__page-section-item-content">
+        <table class="admin__table-secondary">
+            <tr>
+                <th><?= $escaper->escapeHtml(__('ERP Order ID')) ?></th>
+                <td><?= $escaper->escapeHtml($customData['erp_order_id'] ?? '—') ?></td>
+            </tr>
+            <tr>
+                <th><?= $escaper->escapeHtml(__('Expedited')) ?></th>
+                <td>
+                    <?php if ($block->isExpeditedOrder()): ?>
+                        <span class="admin__page- lox-warning"><?= $escaper->escapeHtml(__('Yes')) ?></span>
+                    <?php else: ?>
+                        <span><?= $escaper->escapeHtml(__('No')) ?></span>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <?php if (!empty($customData['gift_message'])): ?>
+            <tr>
+                <th><?= $escaper->escapeHtml(__('Gift Message')) ?></th>
+                <td><?= $escaper->escapeHtml($customData['gift_message']) ?></td>
+            </tr>
+            <?php endif; ?>
+        </table>
+    </div>
+</div>
+```
+
+**ACL Integration — Tab Visibility:**
+
+```xml
+<!-- etc/acl.xml -->
+<acl>
+    <resources>
+        <resource id="Sales::sales_order">
+            <resource id="Sales::sales_order_view">
+                <!-- Tabs respect the parent resource -->
+            </resource>
+        </resource>
+    </resources>
+</acl>
+```
+
+> **⚠️ Production Warning — Layout Handle:** The `sales_order_view.xml` layout
+> handle is loaded for every order view page. Overriding core blocks can cause
+> display issues after upgrades. Use `referenceBlock` with `after`/`before` positioning
+> rather than full block replacement when possible.
+
+---
+
+### Order Action Buttons
+
+Order view pages have toolbar buttons managed via `sales_order_view.xml` layout.
+Buttons are added via `action` arguments in the `order_actions` block.
+
+**When to Use:**
+- Adding "Sync to ERP" or "Push to Fulfillment" buttons to the order toolbar
+- Creating custom "Cancel Order" flows with confirmation dialogs
+- Adding "Re-Export" buttons for orders that failed in integration pipelines
+
+**Key Files:**
+| File | Purpose |
+|------|---------|
+| `view/adminhtml/layout/sales_order_view.xml` | Layout handle |
+| `Controller/Adminhtml/Order/CustomAction.php` | Button controller |
+| `Plugin/Sales/Block/Adminhtml/Order/View/Buttons.php` | Plugin for button control |
+
+**sales_order_view.xml — Add Button:**
+
+```xml
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceBlock name="sales_order_actions">
+            <action name="sync_to_erp">
+                <argument name="config" xsi:type="array">
+                    <item name="label" xsi:type="string" translate="true">Sync to ERP</item>
+                    <item name="class" xsi:type="string">custom-button</item>
+                    <item name="url" xsi:type="string">*/*/syncToErp</item>
+                    <item name="sort_order" xsi:type="number">10</item>
+                </argument>
+            </action>
+        </referenceBlock>
+    </body>
+</page>
+```
+
+**Button Controller — SyncToErp:**
+
+```php
+<?php
+// Controller/Adminhtml/Order/SyncToErp.php
+declare(strict_types=1);
+
+namespace Training\Sales\Controller\Adminhtml\Order;
+
+use Magento\Backend\App\Action;
+use Magento\Backend\App\Action\Context;
+use Magento\Framework\App\Action\HttpPostActionInterface;
+use Magento\Framework\Controller\Result\JsonFactory;
+use Magento\Sales\Api\OrderRepositoryInterface;
+
+class SyncToErp extends Action implements HttpPostActionInterface
+{
+    protected $orderRepository;
+    protected $resultJsonFactory;
+
+    public function __construct(
+        Context $context,
+        OrderRepositoryInterface $orderRepository,
+        JsonFactory $resultJsonFactory
+    ) {
+        parent::__construct($context);
+        $this->orderRepository = $orderRepository;
+        $this->resultJsonFactory = $resultJsonFactory;
+    }
+
+    protected function _isAllowed(): bool
+    {
+        return $this->_authorization->isAllowed('Sales::sales_order');
+    }
+
+    public function execute()
+    {
+        $orderId = (int)$this->getRequest()->getParam('order_id');
+        if (!$orderId) {
+            return $this->resultJsonFactory->create()->setData([
+                'error' => __('Order ID is required.'),
+            ]);
+        }
+
+        try {
+            $order = $this->orderRepository->get($orderId);
+
+            // Simulate ERP sync
+            $order->setData('erp_synced', true);
+            $this->orderRepository->save($order);
+
+            $this->messageManager->addSuccessMessage(
+                __('Order %1 has been synced to ERP.', $order->getIncrementId())
+            );
+        } catch (\Exception $e) {
+            $this->messageManager->addErrorMessage(
+                __('Failed to sync order: %1', $e->getMessage())
+            );
+        }
+
+        $resultRedirect = $this->resultRedirectFactory->create();
+        return $resultRedirect->setPath('sales/order/view', ['order_id' => $orderId]);
+    }
+}
+```
+
+**Buttons Plugin — Conditional Button Display:**
+
+```php
+<?php
+// Plugin/Sales/Block/Adminhtml/Order/View/ButtonsPlugin.php
+declare(strict_types=1);
+
+namespace Training\Sales\Plugin\Sales\Block\Adminhtml\Order\View;
+
+class ButtonsPlugin
+{
+    public function aroundSetOrder(
+        \Magento\Sales\Block\Adminhtml\Order\View\Buttons $subject,
+        \Closure $proceed,
+        \Magento\Sales\Api\Data\OrderInterface $order
+    ): void {
+        $proceed($order);
+
+        // After order is set, conditionally hide/show buttons
+        if ($order->getData('erp_synced')) {
+            // Remove the sync button if already synced
+            $subject->removeButton('sync_to_erp');
+        }
+    }
+}
+```
+
+**di.xml — Register Plugin:**
+
+```xml
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <type name="Magento\Sales\Block\Adminhtml\Order\View\Buttons">
+        <plugin name="training-sales-buttons"
+                type="Training\Sales\Plugin\Sales\Block\Adminhtml\Order\View\ButtonsPlugin"
+                sortOrder="10"/>
+    </type>
+</config>
+```
+
+> **⚠️ Production Warning — Button URLs:** Button URLs using `*/*/action` wildcard
+> notation resolve to the current module. For order-specific actions, always use
+> explicit paths like `sales/order/syncToErp` to avoid URL resolution issues in
+> multi-store environments.
+
+---
+
+### ACL for Sales/Order Resources
+
+Magento's sales ACL uses a two-level hierarchy: `Sales::sales_operation` (parent)
+and `Sales::sales_order` (child). Custom modules that extend order functionality
+must integrate with this hierarchy.
+
+**When to Use:**
+- Your module adds features to order view or order grid
+- You need to control access based on sales operations (view, create, edit)
+- You're building a module that other vendors might install alongside sales
+
+**ACL Resource Hierarchy:**
+
+```
+Sales::sales_operation
+└── Sales::sales_order
+    ├── Sales::sales_order_view
+    ├── Sales::sales_order_actions
+    └── Sales::sales_order_edit
+```
+
+**etc/acl.xml — Full Hierarchy Declaration:**
+
+```xml
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Acl/etc/acl.xsd">
+    <acl>
+        <resources>
+            <!-- Parent: all sales operations -->
+            <resource id="Sales::sales_operation" title="Sales">
+                <!-- Child: order operations -->
+                <resource id="Sales::sales_order" title="Orders">
+                    <!-- View access -->
+                    <resource id="Sales::sales_order_view"
+                              title="View Orders"
+                              sortOrder="10"/>
+                    <!-- Action-level access -->
+                    <resource id="Sales::sales_order_actions"
+                              title="Orders Actions"
+                              sortOrder="20"/>
+                    <!-- Edit access -->
+                    <resource id="Sales::sales_order_edit"
+                              title="Edit Orders"
+                              sortOrder="30"/>
+                </resource>
+            </resource>
+            <!-- Custom module resource can reference sales_order as parent -->
+            <resource id="Training::erp_integration"
+                      title="ERP Integration"
+                      sortOrder="50">
+                <resource id="Training::erp_sync_orders"
+                           title="Sync Orders to ERP"
+                           sortOrder="10"/>
+            </resource>
+        </resources>
+    </acl>
+</config>
+```
+
+**Verifying ACL Integration in Menu:**
+
+```xml
+<!-- etc/menu.xml -->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Menu/etc/config.xsd">
+    <menu>
+        <sales>
+            <children>
+                <order_custom_menu translate="title" module="Training_Sales">
+                    <title>Custom Order Menu</title>
+                    <action>custom/order/index</action>
+                    <resource>Training::erp_sync_orders</resource>
+                    <sortOrder>100</sortOrder>
+                </order_custom_menu>
+            </children>
+        </sales>
+    </menu>
+</config>
+```
+
+**Programmatic ACL Check in Controller:**
+
+```php
+<?php
+// Controller/Adminhtml/Order/CustomAction.php
+declare(strict_types=1);
+
+namespace Training\Sales\Controller\Adminhtml\Order;
+
+use Magento\Backend\App\Action;
+use Magento\Framework\App\Action\HttpGetActionInterface;
+
+class CustomAction extends Action implements HttpGetActionInterface
+{
+    /**
+     * Override _isAllowed to use the ACL resource.
+     *
+     * @return bool
+     */
+    protected function _isAllowed(): bool
+    {
+        // Checks against acl.xml resource declaration
+        return $this->_authorization->isAllowed('Training::erp_sync_orders')
+            || $this->_authorization->isAllowed('Sales::sales_order_edit');
+    }
+}
+```
+
+**ACL Cache Invalidation:**
+
+| Change Type | Cache Action | Command |
+|-------------|--------------|---------|
+| New ACL resource | Invalidate `acl` cache | `bin/magento c:c acl` |
+| Changed resource title | Invalidate `acl` cache | `bin/magento c:c acl` |
+| New role assignment | No cache (stored in DB) | `bin/magento c:c adminnotification` |
+
+**Checking Current User ACL in Code:**
+
+```php
+<?php
+// In any admin context (controller, block, plugin)
+use Magento\Framework\App\AuthorizationInterface;
+
+class OrderChecker
+{
+    private $authorization;
+
+    public function __construct(AuthorizationInterface $authorization)
+    {
+        $this->authorization = $authorization;
+    }
+
+    public function canEditOrders(): bool
+    {
+        return $this->authorization->isAllowed('Sales::sales_order_edit');
+    }
+
+    public function canViewOrders(): bool
+    {
+        return $this->authorization->isAllowed('Sales::sales_order_view')
+            || $this->authorization->isAllowed('Sales::sales_order');
+    }
+}
+```
+
+> **⚠️ Production Warning — ACL Cache:** The ACL cache is persistent. After
+> adding new resources to `acl.xml`, always run `bin/magento c:c acl` before
+> testing. Failing to do so results in the new resource not appearing in role
+> permission lists until cache is cleared.
+
+---
+
+### Quick Reference — Sales Order Extension Pattern Summary
+
+| Pattern | Layout Handle | Key Class | ACL Resource |
+|---------|--------------|-----------|--------------|
+| Grid column | `sales_order_listing.xml` | `ColumnPool` preference | `Sales::sales_order_view` |
+| View tab/fieldset | `sales_order_view.xml` | Custom block | `Sales::sales_order_view` |
+| Action button | `sales_order_view.xml` | Button controller | `Sales::sales_order_actions` |
+| ACL hierarchy | `etc/acl.xml` | Authorization plugin | `Sales::sales_order` |
+
+---
+
+## Definition of Done
+
+Before marking an Order UI extension as complete, verify all items:
+
+- [ ] New column appears in order grid with correct data
+- [ ] New fieldset/tab renders on order view page
+- [ ] Order action button triggers correct controller action
+- [ ] ACL resource is selectable in System → Permissions → Roles
+- [ ] Role without ACL permission cannot see customizations
+- [ ] `bin/magento c:c acl` run after ACL changes
+- [ ] Customizations hidden under correct ACL hierarchy (Sales::sales_order)
+- [ ] No JavaScript errors in browser console on order pages
+- [ ] Changes tested after `bin/magento setup:di:compile`
+- [ ] Extension tested with Magento 2.4.x upgrade (if in production)
+
+---
+
 ## Reading List
 
 - [Admin Routing](https://developer.adobe.com/commerce/php/development/components/routing/#admin-routes) — Admin route structure
@@ -1347,6 +2013,23 @@ rm -rf pub/static/adminhtml/*
 - **Topic 05 (Customization):** Plugins can intercept admin controller methods
 - **Topic 07 (API):** Admin APIs use the same ACL system for authorization
 - **Topic 08 (Data Ops):** Import/export operations often triggered from admin grids
+
+## Supplemental — Security & ACL
+
+For deeper coverage of admin security topics — including CSRF protection, XSS prevention,
+SQL injection, file upload security, admin session hardening, and 2FA — see the canonical
+security chapter:
+
+**📖 [`../_supplemental/07-security-acl.md`](../_supplemental/07-security-acl.md)** — Security & ACL in Magento 2.4.8
+
+This supplemental covers:
+- CSRF form key mechanism and validation
+- XSS prevention with `Magento\Framework\Escaper`
+- SQL injection prevention via parameterised queries
+- File upload security with `FileUploader`
+- ACL resource hierarchy and `_isAllowed()`
+- Admin session security, Argon2ID password hashing, 2FA
+- API security, rate limiting, CORS configuration
 
 ---
 

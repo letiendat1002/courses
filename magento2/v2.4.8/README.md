@@ -16,62 +16,54 @@ A comprehensive, self-paced course covering Magento 2 backend development at a m
 
 ## Learning Path
 
-The course is organized into **19 topics**, progressing from fundamentals to advanced patterns. Complete them in order for structured learning, or jump to specific topics as needed.
+The course is organized into **21 topics**, progressing from fundamentals to advanced patterns. Complete them in order for structured learning, or jump to specific topics as needed.
 
-| # | Topic | Description |
-|---|-------|-------------|
-| 01 | [Development Environment](./01-dev-environment/README.md) | Docker, Composer, Magento CLI, module registration, PSR-12 standards, development tools |
-| 02 | [Architecture](./02-architecture/README.md) | Request flow, area routing, service contracts, DI container, plugin architecture, event system |
-| 03 | [Module Development](./03-module-development/README.md) | Controller lifecycle, block/view models, layout XML, routing, frontend ACL |
-| 04 | [Data Layer](./04-data-layer/README.md) | Models/ResourceModel/Collection, repositories, SearchCriteria, EAV, declarative schema, data patches |
-| 05 | [Customization](./05-customization/README.md) | Plugins (before/after/around), observers, di.xml preferences, virtual types, sort order calculation |
-| 06 | [Admin UI](./06-admin-ui/README.md) | Admin routing, menus, ACL/CSRF security, UI Components, DataProviders, form validation |
-| 07 | [API Development](./07-api-development/README.md) | REST/GraphQL endpoints, webapi.xml, authentication, rate limiting, batch operations |
-| 08 | [Data Operations](./08-data-ops/README.md) | Import/export, indexer management, cron schedules, message queues, bulk operations |
-| 09 | [Performance](./09-performance/README.md) | Full-page cache, block cache, Redis caching, query optimization, profiling tools |
-| 10 | [Checkout](./10-checkout/README.md) | Quote management, inventory reservation, shipping carriers, payment methods, order state machine |
-| 11 | [Email Templates](./11-email-templates/README.md) | Email template architecture, HTML emails, CSS inlining, template variables, admin configuration |
-| 12 | [Unit Testing](./12-unit-testing/README.md) | PHPUnit, unit/integration tests, fixtures, mocking Magento classes, test isolation |
-| 13 | [Module Packaging](./13-module-packaging/README.md) | composer.json, semantic versioning, metapackage, marketplace submission |
-| 14 | [Advanced Performance](./14-advanced-performance/README.md) | Varnish, Elasticsearch, production profiling, New Relic/Blackfire, latency optimization |
-| 15 | [Sales & Orders](./15-sales-orders/README.md) | Order creation lifecycle, invoices, shipments, credit memos, order status management |
-| 16 | [Customer Account](./16-customer-account/README.md) | Customer EAV, registration flow, account management, loyalty programs |
-| 17 | [Adobe Commerce](./17-adobe-commerce/README.md) | CE vs EE vs Cloud, B2B features, edition decision framework |
-| 18 | [GraphQL Headless](./18-graphql-headless/README.md) | Custom GraphQL resolvers, schema design, mutations, caching, security |
-| 19 | [CMS & Extension Attributes](./19-cms-widgets-ext/README.md) | CMS blocks/pages, widgets, Page Builder, extension attributes |
+| # | Topic | Directory | Description |
+|---|-------|-----------|-------------|
+| 01 | Development Environment | `01-dev-environment/` | Docker, Composer, Magento CLI, module registration, PSR-12 standards, development tools |
+| 02 | Architecture | `02-architecture/` | Request flow, area routing, service contracts, DI container, plugin architecture, event system |
+| 03 | Module Development | `03-module-development/` | Controller lifecycle, block/view models, layout XML, routing, frontend ACL |
+| 04 | Data Layer | `04-data-layer/` | Models/ResourceModel/Collection, repositories, SearchCriteria, EAV, declarative schema, data patches |
+| 05 | Customization | `05-customization/` | Plugins (before/after/around), observers, di.xml preferences, virtual types, sort order calculation |
+| 06 | Admin UI | `06-admin-ui/` | Admin routing, menus, ACL/CSRF security, UI Components, DataProviders, form validation |
+| 07 | API Development | `07-api-development/` | REST/GraphQL endpoints, webapi.xml, authentication, rate limiting, batch operations |
+| 08 | Data Operations | `08-data-ops/` | Import/export, indexer management, cron schedules, message queues, bulk operations |
+| 09 | Performance | `09-performance/` | Full-page cache, block cache, Redis caching, query optimization, profiling tools, zero-downtime deploy |
+| 10 | Checkout | `10-checkout/` | Quote management, inventory reservation, shipping carriers, payment methods, order state machine |
+| 11 | Search & Inventory | `11-search-inventory/` | Elasticsearch architecture, query building, catalog search, Multi-Source Inventory (MSI) |
+| 12 | Storefront JavaScript | `12-storefront-js/` | KnockoutJS bindings, RequireJS modules/mixins, jQuery widgets, UI Components on frontend |
+| 13 | Layout XML & Templates | `13-storefront-layout/` | Frontend layout handles, PHTML templates, frontend ACL, template hints |
+| 14 | Theming & LESS | `14-storefront-theming/` | LESS compilation, view.xml, parent-child theme inheritance, CSS output |
+| 15 | Advanced Storefront | `15-storefront-advanced/` | Checkout JS customization, payment integration, jQuery widget patterns, third-party themes |
+| 16 | GraphQL & Headless | `16-graphql-headless/` | Custom GraphQL resolvers, schema design, mutations, caching, PWA Studio, Hyvä |
+| 17 | CMS & Extensions | `17-cms-ext/` | CMS blocks/pages, widgets, Page Builder, extension attributes |
+| 18 | Security Hardening | `18-security-hardening/` | SQL injection, CSRF, rate limiting, secret management, 2FA, security headers |
+| 19 | Production Debugging | `19-production-debugging/` | Request tracing, debug.log correlation, query logging, slow API workflows, common errors |
+| 20 | Module Packaging | `20-module-packaging/` | composer.json, semantic versioning, metapackage, marketplace submission, email templates |
+| 21 | Unit Testing | `21-unit-testing/` | PHPUnit, unit/integration tests, fixtures, mocking Magento classes, test isolation |
+
+**Reference (not a topic — CE course focus):**
+| | Name | Directory | Description |
+|---|---|---|---|
+| 🗂 | Adobe Commerce Reference | `_reference/adobe-commerce/` | EE/Cloud/B2B features as reference only |
 
 ---
 
 ## Topic Dependencies
 
 ```
-01-dev-environment
-└── 02-architecture
-    └── 03-module-development ─────────────────────┐
-         └── 04-data-layer                         │
-              └── 05-customization ───────────────┤
-                   └── 06-admin-ui                │
-                        └── 07-api-development    │
-                             └── 08-data-ops     │
-                                  └── 09-performance
+01 → 02 → 03 → 04 → 05
+                  ↓
+            06-admin-ui → 07-api-dev → 08-data-ops → 09-performance
+                                                              ↓
+                                  11-search-inventory  18-security  19-production
+                                         ↓
+                                   16-graphql (depends on 07)
 
-10-checkout (parallel track)
-├── requires: 04-data-layer, 05-customization
-└── leads to: 15-sales-orders
+05-customization → 06-admin-ui → 17-cms-ext (depends on 06)
 
-11-email-templates, 12-unit-testing, 13-module-packaging
-├── can be studied at any point after 05-customization
-└── recommended after completing core topics
-
-14-advanced-performance
-└── requires: 09-performance
-
-15-sales-orders
-├── requires: 04-data-layer, 05-customization
-└── optional: 10-checkout
-
-16-customer-account
-└── requires: 04-data-layer
+05-customization → 12-storefront-js → 13-layout → 14-theming → 15-advanced
+(parallel to backend, same prerequisites)
 ```
 
 ---
@@ -111,7 +103,7 @@ cd 01-dev-environment
 cat README.md
 
 # Or follow the full learning path sequentially
-for i in {01..19}; do
+for i in {01..21}; do
     dir=$(printf "%02d-*" $i)
     echo "=== Studying $(ls -d $dir 2>/dev/null | head -1) ==="
 done
@@ -138,4 +130,4 @@ done
 
 ---
 
-*Last Updated: 2026-04-20*
+*Last Updated: 2026-04-24*

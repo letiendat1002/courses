@@ -1415,4 +1415,588 @@ bin/magento queue:consumers:run ProductSyncConsumer --force
 
 ---
 
+## Day N+1: Production Message Queue Configuration
+
+> **⚠️ Audience:** This section is for production deployments. If you are still on local development,
+> you can skip this and return when you are ready to go live. All examples are verified against
+> Magento 2.4.7-patched / 2.4.8.
+
+The message queue architecture introduced in Day N covers the basics. This section covers the
+production-grade knobs that determine whether your queue system survives load or collapses under
+it. Every configuration here maps to a real `env.php` key or `queue_topology.xml` directive.
+
+---
+
+### 1. Adapter Selection — MySQL vs RabbitMQ
+
+Out of the box, Magento ships with a MySQL adapter. For production, RabbitMQ is strongly preferred.
+Here is why and how to switch.
+
+**MySQL adapter (default — do not use in production):**
+
+- Single point of failure — if MySQL goes down, queue stops
+- Table locks cause consumer latency under concurrency
+- No Ack/Nack per message granularity; uses row-level status
+- Acceptable only for dev/test with < 100 messages/hour
+
+**RabbitMQ adapter (required for production):**
+
+- Persistent messages survive broker restarts
+- Ack/Nack per message with proper requeue semantics
+- Prefetch window controls consumer load balancing
+- Dead-letter exchange routing built-in
+- Management UI at `http://localhost:15672` for queue inspection
+
+**Comparison table:**
+
+| Dimension | MySQL Adapter | RabbitMQ Adapter |
+|-----------|---------------|-------------------|
+| Message persistence | Table row (RAM-heavy) | Durable exchange + queue |
+| Consumer scaling | Rows locked per consumer | Prefetch-based load balance |
+| Acknowledgment | Table status update | AMQP ACK/NACK frame |
+| Dead-letter routing | Manual + status=4 | Native DLX/DLQ routing |
+| Operational overhead | Zero (already running) | Requires RabbitMQ host |
+| Failure recovery | MySQL failover required | RabbitMQ cluster |
+| Max throughput | ~200 msg/min (single node) | ~50,000+ msg/min |
+
+**`env.php` adapter switch:**
+
+```php
+// app/etc/env.php  ← existing section, replace 'mysql' with 'amqp'
+'queue' => [
+    // -------------------------------------------------------
+    // MySQL adapter (default — remove when switching to RabbitMQ)
+    // -------------------------------------------------------
+    // 'MAGENTO_MODULES' => [
+    //     'Magento_MysqlMq' => 1,
+    // ],
+    // -------------------------------------------------------
+    // RabbitMQ adapter (production)
+    // -------------------------------------------------------
+    'MAGENTO_MODULES' => [
+        'Magento_Amqp' => 1,          // enable AMQP module
+        'Magento_MysqlMq' => 0,        // disable MySQL module
+    ],
+    // -------------------------------------------------------
+    // Connection settings (new in 2.4.7+)
+    // -------------------------------------------------------
+    'amqp' => [
+        'host'     => '127.0.0.1',      // RabbitMQ host
+        'port'     => 5672,             // AMQP port (non-TLS)
+        'user'     => 'magento',        // RabbitMQ username
+        'password' => 'magento123',     // RabbitMQ password
+        'vhost'    => '/',              // virtual host
+        'ssl'      => 'false',          // set 'true' for TLS/AMQPS
+        // ----------------------------------------------------
+        // Optional: bulk operations
+        // ----------------------------------------------------
+        'bulk'   => '1',                // enable bulk message batching
+        'batch-size' => '100',           // messages per bulk frame
+    ],
+],
+```
+
+> **📋 Verification:** After changing `env.php`, run:
+> ```bash
+> bin/magento module:status | grep -E "Amqp|MysqlMq"
+> bin/magento queue:consumers:list     # should show consumers
+> tail -f var/log/queue.log            # watch for adapter init messages
+> ```
+
+---
+
+### 2. Dead-Letter Queue Retry Configuration
+
+When a consumer fails, Magento retries before routing to DLQ. The retry policy is controlled
+via `queue_topology.xml` and the DLQ routing is automatic when max retries are exhausted.
+
+**Retry mechanism flow:**
+
+```
+Publisher → Queue → Consumer → FAIL → Retry #1 (delay 0s)
+                                         → FAIL → Retry #2 (delay 5s)
+                                         → FAIL → Retry #3 (delay 10s)
+                                         → FAIL → DLQ (no requeue)
+```
+
+**`queue_topology.xml` — per-consumer retry config:**
+
+```xml
+<!-- etc/queue_topology.xml -->
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:MessageQueue:etc/topology.xsd">
+
+    <!-- ------------------------------------------------------- -->
+    <!-- ProductSyncConsumer retry configuration -->
+    <!-- ------------------------------------------------------- -->
+    <topic name="product.sync" xmlns:item="http://www.w3.org/2005/Atom">
+        <handler name="ProductSyncConsumer">
+            <item name="type"   value="service"/>
+            <item name="method" value="process"/>
+            <item name="queue"  value="product.sync"/>
+            <item name="item:"  value="max-retries"      value-type="int">3</item>
+            <item name="item:"  value="retry-delay-ms"   value-type="int">5000</item>
+            <item name="item:"  value="failure-routing-key" value-type="string">dlq.product.sync</item>
+        </handler>
+    </topic>
+
+    <!-- ------------------------------------------------------- -->
+    <!-- OrderNotificationConsumer — shorter retry window -->
+    <!-- ------------------------------------------------------- -->
+    <topic name="order.notification" xmlns:item="http://www.w3.org/2005/Atom">
+        <handler name="OrderNotificationConsumer">
+            <item name="type"   value="service"/>
+            <item name="method" value="process"/>
+            <item name="queue"  value="order.notification"/>
+            <item name="item:"  value="max-retries"      value-type="int">5</item>
+            <item name="item:"  value="retry-delay-ms"   value-type="int">2000</item>
+            <item name="item:"  value="failure-routing-key" value-type="string">dlq.order.notification</item>
+        </handler>
+    </topic>
+
+</config>
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max-retries` | 3 | Total attempts before DLQ routing (total = max-retries + initial attempt) |
+| `retry-delay-ms` | 0 (immediate) | Milliseconds to wait before requeue. Can use exponential backoff via multiple `delay-ms` entries |
+| `failure-routing-key` | `failure` | Routing key used when routing failed message to DLX (must match a binding in `queue_topology.xml`) |
+
+**Exponential backoff via multiple delay entries:**
+
+```xml
+<item name="item:" value="retry-delay-ms" value-type="int">2000</item>
+<item name="item:" value="retry-delay-ms" value-type="int">5000</item>
+<item name="item:" value="retry-delay-ms" value-type="int">15000</item>
+<!-- total: 2s → 5s → 15s between retries before DLQ -->
+```
+
+**DLQ naming convention:**
+
+| Queue Name | DLQ Name |
+|------------|----------|
+| `product.sync` | `product.sync.dlq` or `dlq.product.sync` (取决于 `failure-routing-key`) |
+| `order.notification` | `dlq.order.notification` |
+| `inventory.update` | `dlq.inventory.update` |
+
+> **📋 Verification:** After modifying topology:
+> ```bash
+> bin/magento queue:topology:update   # applies topology changes to RabbitMQ
+> # or for MySQL:
+> bin/magento setup:db-declaration:generate-whitelist
+> ```
+> Verify DLQ exists: `rabbitmqctl list_queues | grep dlq`
+
+---
+
+### 3. Consumer Parallelism — `[queue_consumers_number]`
+
+By default, each consumer runs in a single process. Under load, this becomes a bottleneck.
+The `[queue_consumers_number]` setting spawns multiple parallel instances of the same consumer,
+each processing messages independently.
+
+**Use cases for parallelism:**
+
+- High-volume topics: `product.sync`, `order.notification`, `inventory.update`
+- Consumers that spend time in I/O (HTTP calls, file writes) rather than CPU
+- NOT suitable for consumers that modify shared state without locking
+
+**`env.php` consumer parallelism config:**
+
+```php
+// app/etc/env.php
+return [
+    // ... other config ...
+    'system' => [
+        'default' => [
+            'queue_consumers' => [
+                // -------------------------------------------------------
+                // Per-consumer parallelism limit
+                // Magento 2.4.7+ supports this per-consumer syntax
+                // -------------------------------------------------------
+                // Run 4 instances of ProductSyncConsumer in parallel
+                'product.sync'       => 4,
+                // Run 2 instances of OrderNotificationConsumer
+                'order.notification'=> 2,
+                // Leave BulkNotifyConsumer at 1 (writes to shared log)
+                'bulk.notify'        => 1,
+                // -------------------------------------------------------
+                // Global default (applied to unlisted consumers)
+                // -------------------------------------------------------
+                'default'           => 2,
+            ],
+        ],
+    ],
+];
+```
+
+**`env.php` — global parallelism fallback (Magento < 2.4.7):**
+
+```php
+// app/etc/env.php  (older syntax — applies to ALL consumers)
+'queue' => [
+    'consumers' => [
+        // Run up to 3 instances of every consumer listed in queue_topology.xml
+        // WARNING: Only apply this when you have tested memory/CPU limits
+        'MAGENTO_MODULES' => [
+            'Magento_Amqp' => 1,
+        ],
+    ],
+],
+// In system.xml or Admin → System → Configuration → Queue:
+```
+
+**Cron group consumer runner — max_messages per run:**
+
+```php
+// app/etc/env.php
+'system' => [
+    'default' => [
+        'cron_consumers_runner' => [
+            'max-messages'        => 5000,   // max messages per cron run per consumer
+            'consumers'           => 'all',   // or comma-separated list
+            'multipleProcesses'   => 4,       // spawn 4 cron processes concurrently
+            'php-binary'          => 'php',   // path to PHP binary
+            'php-timeout'         => 600,     // PHP process timeout (seconds)
+        ],
+    ],
+],
+```
+
+> **📋 Key insight:** `max-messages` is NOT the same as consumer parallelism.
+> - `max-messages` — how many messages a single consumer instance processes before exiting
+> - `queue_consumers_number` — how many parallel processes run simultaneously
+>
+> Set `max-messages` to a reasonable cap so cron can exit cleanly and reschedule.
+> Set `queue_consumers_number` based on CPU cores and consumer memory footprint.
+
+**Parallelism decision matrix:**
+
+| Consumer type | `queue_consumers_number` | Reason |
+|---------------|--------------------------|--------|
+| Product sync to ERP | 4–8 | I/O-bound, multiple HTTP calls |
+| Order email sender | 2–4 | SMTP latency, retriable |
+| Inventory update | 4 | High volume, idempotent |
+| Shared log writer | 1 | Sequential writes, file locking |
+| Cache warmup | 2 | Sequential dependency chain |
+
+---
+
+### 4. Deferred DB Commit — `useDbAmqpCommit`
+
+This flag controls whether bulk/batch messages wait for full DB transaction commit before
+acknowledgment. It is a critical correctness-vs-performance knob.
+
+**When `useDbAmqpCommit = true` (safer, default for MySQL adapter):**
+
+```
+BEGIN transaction
+  INSERT order_comment
+  INSERT order_history
+  INSERT order_status_log
+COMMIT transaction
+  → Then publish queue message (guaranteed entity exists in DB)
+```
+
+- ✅ Message published ONLY after DB transaction is committed
+- ✅ Consumer reads entity from DB and finds it — no 404
+- ✅ Works correctly with MySQL table locks and REPEATABLE READ isolation
+- ❌ Latency: DB commit + network roundtrip to broker before Ack
+
+**When `useDbAmqpCommit = false` (faster, use with RabbitMQ):**
+
+```
+BEGIN transaction
+  INSERT order_comment
+  INSERT order_history
+  INSERT order_status_log
+COMMIT transaction (async/non-blocking)
+  → Publish queue message immediately (may arrive before commit!)
+```
+
+- ✅ Lower latency — publish happens immediately after transaction COMMIT
+- ✅ Better throughput for RabbitMQ which handles ordering differently
+- ❌ Risk: Consumer may query DB before commit arrives — add retry logic
+- ✅ Acceptable when entity has a status field (consumer can wait/sleep-and-retry)
+
+**`env.php` configuration:**
+
+```php
+// app/etc/env.php
+'queue' => [
+    'MAGENTO_MODULES' => [
+        'Magento_Amqp' => 1,
+        'Magento_MysqlMq' => 0,
+    ],
+    // -------------------------------------------------------
+    // Deferred DB commit flag
+    // true  = publish AFTER DB commit (safer, default)
+    // false = publish IMMEDIATELY after COMMIT (faster, RabbitMQ)
+    // -------------------------------------------------------
+    'useDbAmqpCommit' => false,   // ← set to false when using RabbitMQ
+],
+```
+
+> **📋 Decision rule:** If your consumer reads entity data from DB (most common case),
+> keep `useDbAmqpCommit = true` unless you have confirmed via load testing that the
+> ~1–5ms deferral matters for your throughput requirements. If you are using RabbitMQ
+> and the consumer only processes external API calls (no DB read), set `false`.
+
+---
+
+### 5. Cron Group Concurrency — `[cron_consumers_runner]`
+
+The `cron_consumers_runner` section controls how Magento launches queue consumers via cron.
+It is the bridge between the cron scheduler and the message queue processor.
+
+**How it works:**
+
+```
+crontab → cron.php → looks for jobs in consumers group
+                        → bin/magento queue:consumers:run [consumer_name]
+                              → spawns PHP process
+                              → processes up to max-messages
+                              → exits cleanly
+```
+
+**Key settings explained:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max-messages` | 10000 | Max messages per consumer invocation. Set lower for heavy consumers |
+| `consumers` | `all` | `all` = all consumers listed in `queue_topology.xml`. Or specific consumer names |
+| `multipleProcesses` | 1 | Number of parallel cron processes to spawn |
+| `php-binary` | `php` | Path to PHP binary (use absolute path in production) |
+| `php-timeout` | 600 | Hard timeout for PHP process (kills stuck consumer) |
+
+**Production `env.php` cron config example:**
+
+```php
+// app/etc/env.php
+'system' => [
+    'default' => [
+        'cron_consumers_runner' => [
+            'id'                  => 'consumers',   // internal, must be 'consumers'
+            'max-messages'        => 5000,          // cap per run (prevents infinite processing)
+            'consumers'           => 'all',         // or: 'product.sync,order.notification'
+            'multipleProcesses'   => 4,             // run 4 parallel PHP cron processes
+            'php-binary'          => '/usr/bin/php8.2',  # absolute path — critical for cron
+            'php-timeout'         => 900,           # 15 min max — adjust per consumer
+        ],
+        // -------------------------------------------------------
+        // Consumer-specific settings (Magento 2.4.7+)
+        // Per-consumer max-messages override
+        // -------------------------------------------------------
+        'queue_consumers' => [
+            // Heavy consumer — lower message cap per run
+            'order.notification' => [
+                'max-messages' => 1000,
+                'single-queue' => true,    # force single-queue mode (no parallelism)
+            ],
+            // Light consumer — higher cap
+            'product.sync' => [
+                'max-messages' => 10000,
+            ],
+        ],
+    ],
+],
+```
+
+**Crontab entry (auto-generated by Magento — do not edit manually):**
+
+```bash
+# Generated by Magento at setup:cron:run
+# Do not edit manually — use Admin → System → Cron instead
+*/1 * * * * /usr/bin/php8.2 /var/www/magento2/bin/magento cron:run --group=consumers
+```
+
+> **📋 Key insight:** `multipleProcesses = 4` spawns 4 parallel `queue:consumers:run`
+> invocations. Each runs independently. If `product.sync = 4` in `queue_consumers_number`,
+> and `multipleProcesses = 4`, you could have up to 16 parallel `ProductSyncConsumer`
+> instances during a cron run. Scale carefully.
+
+---
+
+### 6. Message Chunk Size Tuning — `[queue_message_processing_limit]`
+
+This setting controls how many messages RabbitMQ prefetches per consumer. It is the single
+most impactful setting for throughput under load.
+
+**Prefetch concept:**
+
+```
+RabbitMQ broker  ─────── prefetch=100 ────────► Consumer process
+   [msg1, msg2, ..., msg100]  (buffered locally)
+```
+
+- Messages are buffered in RabbitMQ, not held by broker
+- Consumer processes messages locally; ACK releases next batch
+- `prefetch` of 1 = one-at-a-time (safest but slowest)
+- `prefetch` of 100 = 100 messages buffered locally (highest throughput)
+
+**`queue_message_processing_limit` — global prefetch cap:**
+
+```php
+// app/etc/env.php
+'system' => [
+    'default' => [
+        // -------------------------------------------------------
+        // Global message processing limit
+        // Caps the number of messages RabbitMQ will prefetch
+        // regardless of per-consumer setting
+        // -------------------------------------------------------
+        'queue_message_processing_limit' => 100,
+        // -------------------------------------------------------
+        // Per-consumer override (Magento 2.4.7+)
+        // -------------------------------------------------------
+        'queue_consumers' => [
+            'product.sync' => [
+                'prefetch-count' => 50,   # smaller batch for heavy processing
+            ],
+            'order.notification' => [
+                'prefetch-count' => 200,  # larger batch for light processing
+            ],
+        ],
+    ],
+],
+```
+
+**Consumer-specific prefetch via `queue_topology.xml` (alternative):**
+
+```xml
+<!-- etc/queue_topology.xml -->
+<topic name="product.sync" xmlns:item="http://www.w3.org/2005/Atom">
+    <handler name="ProductSyncConsumer">
+        <item name="type"    value="service"/>
+        <item name="method"  value="process"/>
+        <item name="queue"   value="product.sync"/>
+        <item name="item:"    value="prefetch-count" value-type="int">50</item>
+    </handler>
+</topic>
+```
+
+**Prefetch decision guide:**
+
+| Consumer behavior | Recommended `prefetch-count` | Reason |
+|-------------------|------------------------------|--------|
+| Heavy processing per message (complex DB, API calls) | 10–50 | Avoid memory pressure; each message holds state |
+| Light processing (email, simple DB update) | 100–250 | Maximize throughput; consumer is fast |
+| Single DB transaction per message | 50–100 | DB connection pool limit applies |
+| External API with rate limiting | 20–50 | Respect third-party rate limits across prefetch window |
+| Memory-intensive payload in message body | 10–20 | Each prefetched message lives in RAM |
+
+> **⚠️ Warning:** Setting `prefetch-count` too high can cause OOM in consumers that hold
+> large message payloads or entity data in memory. Monitor PHP `memory_get_usage(true)`
+> under load test before setting production values.
+
+**Complete production `env.php` queue section (all settings combined):**
+
+```php
+// app/etc/env.php  — complete production queue configuration
+return [
+    // ... other sections ...
+
+    // ============================================================
+    // QUEUE CONFIGURATION (all settings in one place)
+    // ============================================================
+    'queue' => [
+        // -------------------------------------------------------
+        // Module enable/disable
+        // -------------------------------------------------------
+        'MAGENTO_MODULES' => [
+            'Magento_Amqp' => 1,       // RabbitMQ adapter
+            'Magento_MysqlMq' => 0,    // disable MySQL adapter
+        ],
+
+        // -------------------------------------------------------
+        // RabbitMQ connection settings
+        // -------------------------------------------------------
+        'amqp' => [
+            'host'            => '127.0.0.1',
+            'port'            => 5672,
+            'user'            => 'magento',
+            'password'        => 'magento123',
+            'vhost'           => '/',
+            'ssl'             => 'false',
+            'bulk'            => '1',
+            'batch-size'      => '100',
+        ],
+
+        // -------------------------------------------------------
+        // Deferred commit — false for RabbitMQ (publish immediately)
+        // -------------------------------------------------------
+        'useDbAmqpCommit' => false,
+    ],
+
+    'system' => [
+        'default' => [
+            // -------------------------------------------------------
+            // Consumer parallelism (how many instances per consumer)
+            // -------------------------------------------------------
+            'queue_consumers' => [
+                'product.sync'        => 4,
+                'order.notification'  => 2,
+                'bulk.notify'         => 1,
+                'default'            => 2,
+            ],
+
+            // -------------------------------------------------------
+            // Cron group consumer runner
+            // -------------------------------------------------------
+            'cron_consumers_runner' => [
+                'id'                 => 'consumers',
+                'max-messages'       => 5000,
+                'consumers'          => 'all',
+                'multipleProcesses'  => 4,
+                'php-binary'         => '/usr/bin/php8.2',
+                'php-timeout'        => 900,
+            ],
+
+            // -------------------------------------------------------
+            // Global message processing (prefetch) limit
+            // -------------------------------------------------------
+            'queue_message_processing_limit' => 100,
+
+            // -------------------------------------------------------
+            // Per-consumer overrides
+            // -------------------------------------------------------
+            'queue_consumers' => [
+                'product.sync' => [
+                    'prefetch-count' => 50,
+                    'max-messages'   => 2000,
+                ],
+                'order.notification' => [
+                    'prefetch-count' => 200,
+                    'max-messages'   => 10000,
+                ],
+            ],
+        ],
+    ],
+];
+```
+
+---
+
+## Definition of Done
+
+Before marking a queue implementation as production-ready, verify each item:
+
+- [ ] **Adapter:** `env.php` has `Magento_Amqp => 1` and `Magento_MysqlMq => 0`
+- [ ] **Connection:** `bin/magento queue:consumers:list` returns expected consumers
+- [ ] **Topology:** `queue_topology.xml` is deployed and `bin/magento queue:topology:update` ran
+- [ ] **DLQ exists:** `rabbitmqctl list_queues | grep dlq` shows dead-letter queues
+- [ ] **Retry config:** `max-retries`, `retry-delay-ms`, `failure-routing-key` set per topic
+- [ ] **Parallelism tested:** Load test with `queue_consumers_number > 1` shows no race conditions
+- [ ] **Idempotency verified:** Consumer produces same result when called 2x with same message
+- [ ] **Deferred commit:** Consumer handles the case where entity may not yet be committed (if `useDbAmqpCommit = false`)
+- [ ] **max-messages set:** No consumer has unlimited `max-messages` in production
+- [ ] **Cron group active:** `crontab -l | grep consumers` shows the cron group entry
+- [ ] **Prefetch tuned:** Under load test, no consumer OOM; throughput is acceptable
+- [ ] **Monitoring:** Alerting set up for `queue_message.status = 4` (rejected) growing
+- [ ] **Management UI:** RabbitMQ management UI accessible and authenticated
+
+---
+
 *Magento 2 Backend Developer Course — Topic 08*

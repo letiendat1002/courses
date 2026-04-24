@@ -161,16 +161,201 @@ if ($order->getState() === OrderInterface::STATE_PROCESSING) { ... }
 // OR if it's a real PHP enum (not all Magento constants are native enums yet)
 ```
 
+#### 9. First-Class Callable Syntax (PHP 8.0+)
+```
+// BEFORE — array callable syntax
+$callback = [$pluginInstance, 'beforeSave'];
+$pluginManager->addPlugin($callback);
+
+// AFTER — first-class callable (recommended in PHP 8)
+$callback = $pluginInstance->beforeSave(...);
+$pluginManager->addPlugin($callback);
+```
+
+**Why this matters in Magento:** The `...` (variadic) operator creates a callable without invoking the method. This is idiomatic in PHP 8 and appears in:
+- Plugin sorting (callable wrappers for `before`/`after` plugins)
+- Event dispatcher callbacks
+- Plugin chain resolution in `Magento\Framework\Interception`
+
+| Syntax | Type | Use Case |
+|--------|------|----------|
+| `[$obj, 'method']` | Array callable | Legacy PHP 7.x compatible |
+| `$obj->method(...)` | First-class callable | PHP 8+ idiomatic, IDE-friendly |
+| `$obj->method` | Bound method | Already bound, no `...` needed |
+
+> **Pro Tip:** Use `$obj->method(...)` for new code. The `...` tells PHP "create a callable that, when invoked later, passes these arguments." This is how Magento's interceptor builds plugin chains.
+```
+// Magento plugin example — modern callable syntax
+private function wrapPlugin callable(PluginInterface $plugin): callable
+{
+    return $plugin->beforeExecute(...);
+}
+
+// vs legacy — same behavior, more verbose
+private function wrapPluginLegacy(PluginInterface $plugin): callable
+{
+    return [$plugin, 'beforeExecute'];
+}
+```
+
+---
+
+#### 10. PHP 8 Attributes vs Docblocks
+```
+// BEFORE — docblock annotation
+/**
+ * @deprecated 2.4.8 — use {@see NewClass::doSomething()} instead
+ * @method int getId()
+ */
+class OldClass {
+    // ...
+}
+
+// AFTER — PHP 8 Attribute
+#[Deprecated(message: 'use NewClass::doSomething() instead', since: '2.4.8')]
+class NewClass {
+    #[Attribute(Attribute::TARGET_METHOD)]
+    public function doSomething(): int
+    {
+        return 1;
+    }
+}
+```
+
+**Attribute targets in Magento 2.4.8 core:**
+```
+#[Attribute(Attribute::TARGET_CLASS)]     // Class-level marker
+#[Attribute(Attribute::TARGET_METHOD)]    // Method-level marker
+#[Attribute(Attribute::TARGET_PROPERTY)]  // Property-level marker
+#[Attribute(Attribute::TARGET_FUNCTION)]  // Function-level marker
+
+// Common Magento attributes found in core
+#[Obsolete('Use {NewClass} instead')]      // Replacement marker
+#[Required]                                // DI validation
+#[VarResolver]                             // Template variable resolution
+```
+
+| Pattern | PHP 7.x | PHP 8+ | Prefer |
+|---------|---------|--------|--------|
+| Deprecation | `@deprecated` docblock | `#[Deprecated]` attribute | PHP 8 |
+| Method mock hint | `@method` docblock | `#[Attribute]` + interface | PHP 8 |
+| Target restriction | N/A | `#[Attribute(TARGET_METHOD)]` | PHP 8 |
+| Deprecation since | `@since 2.4.7` in docblock | `#[Deprecated(since: "2.4.8")]` | PHP 8 |
+
+> **Migration Path:** PHP 8 attributes are machine-readable. `@deprecated` docblocks require text parsing; `#[Deprecated]` attributes can be detected by static analyzers (PHPStan, Psalm) automatically. When you encounter a docblock `@deprecated` in Magento code, check if a corresponding `#[Deprecated]` attribute exists or should be added.
+
+```
+// Magento core — real-world attribute usage
+// vendor/magento/framework/Phrase/Attribute/Scope.php
+namespace Magento\Framework\Phrase\Attribute;
+
+#[\Attribute(\Attribute::TARGET_METHOD)]
+class Scope
+{
+    public function __construct(
+        public readonly string $scope = 'global'
+    ) {}
+}
+
+// vendor/magento/framework/Controller/ResultInterface.php
+// Note: Not all Magento code uses attributes yet — docblocks still common
+```
+
+---
+
+#### 11. The `never` Return Type (PHP 8.1+)
+```
+// BEFORE — void with exit or throw
+function redirectToCheckout(): void
+{
+    header('Location: /checkout');
+    exit; // technically exits, but void doesn't express this
+}
+
+// AFTER — never (PHP 8.1+)
+function redirectToCheckout(): never
+{
+    header('Location: /checkout');
+    exit; // never expresses "this method NEVER returns normally"
+}
+```
+
+**Why `never` matters:**
+- `void` — function MAY return `null` or nothing; caller expects no return value
+- `never` — function WILL NEVER return; it either throws, exits, or calls another `never` function
+
+| Return Type | Returns normally? | Use Case |
+|------------|-------------------|----------|
+| `void` | Yes (or null) | Standard methods, setters, fire-and-forget |
+| `never` | No | Redirect, throw, exit, infinite loop with break |
+| `mixed` | Yes | Dynamic return — avoid if possible |
+
+> **Magento Use Cases:**
+```
+// Payment validation — never indicates validation always halts
+#[Pure]
+public function validatePaymentData(array $data): never
+{
+    if (!$this->validator->isValid($data)) {
+        throw new LocalizedException(__('Invalid payment data'));
+    }
+}
+
+// Redirect — never indicates redirect always happens
+public function execute(): never
+{
+    $this->response->setRedirect($this->url->getUrl('checkout'));
+    $this->messageManager->addErrorMessage('Please complete checkout');
+    return $this->resultFactory->create(ResultFactory::TYPE_REDIRECT);
+    // never reached — response already sent
+}
+
+// Exit-aware redirect pattern
+public function performLogout(): never
+{
+    $this->session->destroy();
+    $this->response->setRedirect('/login');
+    return $this->response; // IDE may warn, but never returns
+}
+```
+
+> **Critical Difference:** Functions returning `never` cannot be called in the middle of an expression chain. `never` is a bottom type — it signals "code execution does not continue past this point." PHPStan and Psalm use this for control flow analysis.
+
 **Pro Tips:**
 - In Magento 2.4.8, look for `enum` keyword in core code — that's a native PHP enum
 - `declare(strict_types=1)` at the top of every PHP file enables strict typing
 - Mixed types (`mixed $value`) in Magento code mean "could be anything" — handle accordingly
 - Readonly classes prevent accidental mutation of value objects — Magento uses this for Address, etc.
+- First-class callable syntax (`$obj->method(...)`) is idiomatic PHP 8 — use it in plugin and event dispatcher code
+- Attributes (`#[Deprecated]`, `#[Attribute]`) are machine-readable deprecation markers — prefer over docblock annotations
+- The `never` return type expresses "this method never returns normally" — use for redirects, throws, and exit points
 
 **Common Pitfalls:**
 - Not knowing about constructor promotion → misreading Magento DI
 - Confusing `?->` (nullsafe) with `->` (will crash on null)
 - Not handling `false` returns from functions that declare `returnType|false`
+- Using array callable syntax when first-class callable is available — prefer `$obj->method(...)` in PHP 8+
+- Treating `void` and `never` the same — `void` may return, `never` never does
+
+---
+
+## Summary: PHP 8 Features Checklist
+
+Use this checklist when reviewing Magento 2.4.8 code:
+
+| # | Feature |识别方法 | Use in Core |
+|---|---------|----------|-------------|
+| 1 | Constructor Property Promotion | `private Type $name` in `__construct()` | DI constructor arguments |
+| 2 | Named Arguments | `func(arg: value)` | `setStatus(status: 'pending')` |
+| 3 | readonly Properties | `public readonly string $x` | Address, Value Objects |
+| 4 | First-Class Enums | `enum Status: string { case Active }` | OrderStatus, PaymentStatus |
+| 5 | match Expression | `match($val) { 'a' => 1 }` | State machine transitions |
+| 6 | Nullsafe Operator | `$obj?->method()` | Nested null-checks |
+| 7 | Union Types | `function(): int\|false` | `Order\|false` returns |
+| 8 | BackedEnums | `enum implements BackedEnum` | Magento constants replaced gradually |
+| 9 | First-Class Callable | `$obj->method(...)` | Plugin chain, event dispatcher |
+| 10 | PHP 8 Attributes | `#[Deprecated]`, `#[Attribute]` | Core migration in progress |
+| 11 | `never` Return Type | `function(): never` | Redirect, throw, exit patterns |
 
 ---
 
