@@ -13,7 +13,7 @@
 
 ---
 
-## 21-Topic Curriculum (Backend Track)
+## 23-Topic Curriculum (Backend + Storefront Track)
 
 ---
 
@@ -42,17 +42,17 @@
 
 ---
 
-### Topic 02: Controllers, Blocks, Templates & Layout XML
+### Topic 02: Architecture & Design Principles
 **Days:** 5
-**Philosophy:** Build the request-response chain
+**Philosophy:** Build the mental model of how Magento works
 
 | Day | Topic | Content | Commands |
 |-----|-------|---------|----------|
 | 1 | Request Flow | How Magento routes URL to controller | — |
-| 2 | Controllers + Routing | routes.xml, HttpGetActionInterface, HttpPostActionInterface | `router:list` |
-| 3 | Blocks + Templates | Block logic, PHTML, $block->escapeHtml() | — |
-| 4 | Layout XML | Handles, containers, references, arguments | `cache:flush` |
-| 5 | PHPCS + Code Quality | PSR-12, Magento coding standard, pre-commit hook | `vendor/bin/phpcs` |
+| 2 | Area Architecture | Frontend, adminhtml, graphql, webapi_rest, webapi_soap areas | — |
+| 3 | Dependency Injection | di.xml, ObjectManager, virtual types, preferences | `di:compile` |
+| 4 | Plugin System | Before/after/around interception | `di:compile` |
+| 5 | Coding Standards | PSR-12, Magento coding standard, pre-commit hook | `vendor/bin/phpcs` |
 
 **New Concepts:** MVC in Magento, layout XML processing, code quality gates
 **Admin Addition:** Admin routes (etc/adminhtml/routes.xml) → covered in Topic 6
@@ -67,7 +67,33 @@
 
 ---
 
-### Topic 03: Data Layer — Models, Database, Service Contracts & Repositories
+### Topic 03: Module Development — Controllers, Blocks, Layout XML & Routing
+**Days:** 5
+**Philosophy:** Build working Magento modules — from route to rendered page
+
+| Day | Topic | Content | Commands |
+|-----|-------|---------|----------|
+| 1 | Module Anatomy | registration.php, module.xml, file structure | `module:enable`, `setup:upgrade` |
+| 2 | Controller Lifecycle | execute() method, HttpGetActionInterface, HttpPostActionInterface | — |
+| 3 | Block & View Models | Block logic, template assignment, $block->escapeHtml() | — |
+| 4 | Layout XML | handles, containers, references, arguments, move | `cache:flush` |
+| 5 | Frontend ACL | Frontend routing, acl.xml, permission basics | — |
+
+**New Concepts:** Module skeleton, controller execute(), layout XML, PSR-12 code quality
+**Admin Addition:** Admin routes (etc/adminhtml/routes.xml) — covered in Topic 6
+
+**Definition of Done (DoD):**
+- [ ] Custom module registered and enabled
+- [ ] Working route with custom controller
+- [ ] Custom block passes data to template
+- [ ] Layout XML positions elements without modifying core
+- [ ] PHPCS reports zero errors on module code
+
+**Assessment:** Module skeleton (15m) + Controller (20m) + Block/Template (25m) + Layout XML (25m) + ACL (15m)
+
+---
+
+### Topic 04: Data Layer — Models, Database, Service Contracts & Repositories
 **Days:** 5
 **Philosophy:** Understand data persistence end-to-end
 
@@ -95,35 +121,33 @@
 
 ---
 
-### Topic 04: Plugins, Observers & Dependency Injection
+### Topic 05: Customization — Plugins, Observers, Events & Preferences
 **Days:** 5
-**Philosophy:** Customize Magento without touching core code
+**Philosophy:** Master Magento's interception system
 
 | Day | Topic | Content | Commands |
 |-----|-------|---------|----------|
-| 1 | After Plugins | Modify return values after method runs | `di:compile` |
-| 2 | Before Plugins | Validate/change input before method runs | — |
-| 3 | Around Plugins | Wrap method logic, conditionally skip | — |
-| 4 | Observers & Events | Event dispatch, observer registration, custom events | — |
-| 5 | di.xml Advanced | Preferences, virtual types, sort order | `setup:di:compile` |
+| 1 | Plugin Recap + Sorting | Multi-plugin sort order, around vs before/after | `di:compile` |
+| 2 | Advanced Plugins | Changing arguments, conditional execution | — |
+| 3 | Observer Deep Dive | Event creation, observer priority, multiple observers | — |
+| 4 | Preferences & Type Replacement | Concrete class replacement, interface implementation | — |
+| 5 | Virtual Types | Injection via configuration, real-world use cases | `setup:di:compile` |
 
-**New Concepts:** Plugin interception (before/after/around), event-driven architecture
-**Admin Addition:** Admin routing (di.xml area configuration)
+**New Concepts:** Advanced plugin patterns, preference chains, virtual type inheritance
+**Admin Addition:** Admin configuration via di.xml (virtual types for API clients)
 
 **Definition of Done (DoD):**
-- [ ] After plugin modifies ProductRepositoryInterface::save return value
-- [ ] Before plugin validates SKU (not empty) and price (not negative)
-- [ ] Around plugin wraps getById with timing/logic
-- [ ] Custom event dispatched from controller/service
-- [ ] Observer responds to dispatched event
-- [ ] Plugin sort order configured for multiple plugins
-- [ ] Virtual type or preference configured in di.xml
+- [ ] Multiple plugins with correct sort order
+- [ ] Around plugin conditionally skipping logic
+- [ ] Custom event with multiple observers
+- [ ] Preference replacing a core model
+- [ ] Virtual type used for environment-specific config
 
-**Assessment:** After Plugin (20m) + Before Plugin (20m) + Around Plugin (25m) + Observer (20m) + Sort Order (10m)
+**Assessment:** Plugin sorting (15m) + Advanced plugins (25m) + Observer priority (20m) + Preferences (20m) + Virtual types (20m)
 
 ---
 
-### Topic 05: Admin UI — Routes, Menus, Configuration, ACL & Grids
+### Topic 06: Admin UI — Routes, Menus, Configuration, ACL & Grids
 **Days:** 5
 **Philosophy:** Build the Admin Interface — every module needs a home in admin
 
@@ -147,32 +171,6 @@
 - [ ] All controllers protected with `_isAllowed()` ACL checks
 
 **Assessment:** Admin route + menu (20m) + System config (20m) + ACL (20m) + Admin grid (45m)
-
----
-
-### Topic 06: Customization — Plugins, Observers, Events & Preferences
-**Days:** 5
-**Philosophy:** Master Magento's interception system
-
-| Day | Topic | Content | Commands |
-|-----|-------|---------|----------|
-| 1 | Plugin Recap + Sorting | Multi-plugin sort order, around vs before/after | `di:compile` |
-| 2 | Advanced Plugins | Changing arguments, conditional execution | — |
-| 3 | Observer Deep Dive | Event creation, observer priority, multiple observers | — |
-| 4 | Preferences & Type Replacement | Concrete class replacement, interface implementation | — |
-| 5 | Virtual Types | Injection via configuration, real-world use cases | `setup:di:compile` |
-
-**New Concepts:** Advanced plugin patterns, preference chains, virtual type inheritance
-**Admin Addition:** Admin configuration via di.xml (virtual types for API clients)
-
-**Definition of Done (DoD):**
-- [ ] Multiple plugins with correct sort order
-- [ ] Around plugin conditionally skipping logic
-- [ ] Custom event with multiple observers
-- [ ] Preference replacing a core model
-- [ ] Virtual type used for environment-specific config
-
-**Assessment:** Plugin sorting (15m) + Advanced plugins (25m) + Observer priority (20m) + Preferences (20m) + Virtual types (20m)
 
 ---
 
@@ -231,7 +229,7 @@
 
 ---
 
-### Topic 09: Performance, Indexing & Capstone
+### Topic 09: Performance — Caching, Indexing & Profiling
 **Days:** 5
 **Philosophy:** Production readiness — make it fast, own it
 
@@ -241,7 +239,7 @@
 | 2 | Indexing | Indexer modes (on-save/schedule), mview, reindex strategies | `indexer:reindex` |
 | 3 | Profiling | Query logging, Xdebug profiler, built-in profiler | — |
 | 4 | Advanced Performance | Full-page cache, Redis, Varnish basics | — |
-| 5 | Capstone | Complete module presentation — all 9 foundational topics demonstrated | — |
+| 5 | Database Optimization | Query analysis, schema optimization, connection pooling | — |
 
 **New Concepts:** Cache hierarchy, indexer modes, profiling, full-page cache
 **Admin Addition:** Admin grid — UI Components for data tables
@@ -251,10 +249,9 @@
 - [ ] At least one indexer in schedule mode
 - [ ] Profiler output analyzed, slow query identified
 - [ ] Full-page cache configured
-- [ ] **Capstone module** complete with all required components
-- [ ] Module presented (5 min walkthrough)
+- [ ] Database query analyzed and optimized
 
-**Assessment:** Block cache (20m) + Indexer (15m) + Profiler (20m) + Advanced cache (25m) + Capstone (all day 5)
+**Assessment:** Block cache (20m) + Indexer (15m) + Profiler (20m) + Advanced cache (25m) + DB optimization (25m)
 
 ---
 
@@ -388,29 +385,29 @@
 
 ---
 
-### Topic 15: Advanced Storefront — Performance & Personalization
+### Topic 15: Advanced Storefront — Checkout JS, Payment Integration & Hyvä
 **Days:** 5
-**Philosophy:** Take the storefront further — faster, smarter, more personal
+**Philosophy:** Take the storefront further — checkout customization, payment integration, Hyvä
 
 | Day | Topic | Content | Commands |
 |-----|-------|---------|----------|
-| 1 | Customer Segmentation | Customer groups, segment rules | — |
-| 2 | Private Sales / Events | Event-based pricing, category access | — |
-| 3 | Wishlist & Gift Options | Wishlist customization, gift wrap, gift cards | — |
-| 4 | Advanced Cache | FPC holes, ESI, per-customer cache | `cache:flush` |
-| 5 | Personalization Integration | Persistent cart, recently viewed, comparison | — |
+| 1 | Checkout JS Architecture | KnockoutJS components, UI Component layout, view models | — |
+| 2 | Checkout JS Plugins | Plugin/mixin patterns for checkout components | `cache:flush` |
+| 3 | Payment Method Integration | Payment method integration, payment component | — |
+| 4 | jQuery Widget Patterns | $.widget factory, _trigger methods, custom widgets | — |
+| 5 | Third-Party Themes | Hyvä installation, Luma child themes, third-party theme config | — |
 
-**New Concepts:** Customer segmentation, private sales, FPC holes, personalization
-**Prerequisite:** Topics 09, 12
+**New Concepts:** Checkout JS, payment integration, jQuery widgets, Hyvä, third-party themes
+**Prerequisite:** Topics 10 (Checkout), 12 (Storefront JS), 14 (Theming)
 
 **Definition of Done (DoD):**
-- [ ] Customer segment with dynamic content
-- [ ] Private sale event created and restricted
-- [ ] Wishlist extended with custom attribute
-- [ ] FPC hole punched for personalized content
-- [ ] Recently viewed configured
+- [ ] Checkout JS component customized via plugin/mixin
+- [ ] Custom payment method integrated into checkout flow
+- [ ] jQuery widget created and initialized
+- [ ] Hyvä theme installed and configured
+- [ ] Third-party theme configured as Luma child
 
-**Assessment:** Segmentation (20m) + Private sales (20m) + Wishlist (20m) + FPC holes (25m) + Personalization (20m)
+**Assessment:** Checkout JS (20m) + Payment integration (30m) + jQuery widgets (20m) + Hyvä (25m) + Third-party theme (20m)
 
 ---
 
@@ -570,6 +567,58 @@
 
 ---
 
+### Topic 22: Customer Account — Registration, Session & Loyalty
+**Days:** 5
+**Philosophy:** Own the customer — registration, session management, loyalty programs
+
+| Day | Topic | Content | Commands |
+|-----|-------|---------|----------|
+| 1 | Customer EAV | Customer EAV attributes, attribute sets | — |
+| 2 | Registration Flow | Customer account creation, controller, form integration | — |
+| 3 | Session Management | Customer session, quote association, persistence | — |
+| 4 | Account Management | Dashboard customization, address management | — |
+| 5 | Loyalty Programs | Reward points, customer segments, promotional rules | — |
+
+**New Concepts:** Customer EAV, account registration, loyalty programs
+**Prerequisite:** Topic 04 (Data Layer), Topic 06 (Admin UI)
+
+**Definition of Done (DoD):**
+- [ ] Custom customer EAV attribute created and displayed
+- [ ] Registration form with custom fields
+- [ ] Customer session persists across page loads
+- [ ] Account dashboard customized
+- [ ] Reward points configured and applied
+
+**Assessment:** Customer EAV (20m) + Registration (20m) + Session (20m) + Account management (25m) + Loyalty (20m)
+
+---
+
+### Topic 23: B2B Commerce — Shared Catalogs, Companies & Negotiable Quotes
+**Days:** 5
+**Philosophy:** Sell to businesses — B2B features, company accounts, quick order
+
+| Day | Topic | Content | Commands |
+|-----|-------|---------|----------|
+| 1 | B2B Overview | B2B module installation, company accounts, buyer roles | — |
+| 2 | Shared Catalogs | Public vs company-specific catalogs, custom pricing | — |
+| 3 | Quick Order | Quick order pad, CSV upload, reorder | — |
+| 4 | Requisition Lists | Requisition list management, list-to-cart | — |
+| 5 | Negotiable Quotes | Quote creation, negotiation workflow, approval | — |
+
+**New Concepts:** B2B module, company accounts, shared catalogs, negotiable quotes
+**Prerequisite:** Topic 04 (Data Layer), Topic 10 (Checkout)
+
+**Definition of Done (DoD):**
+- [ ] Company account created with buyer role
+- [ ] Shared catalog configured with custom pricing
+- [ ] Quick order pad functional with CSV upload
+- [ ] Requisition list created and converted to cart
+- [ ] Negotiable quote initiated and approved
+
+**Assessment:** B2B overview (15m) + Shared catalogs (25m) + Quick order (20m) + Requisition lists (20m) + Negotiable quotes (25m)
+
+---
+
 ## Must-Know bin/magento Commands
 
 | Topic | Commands |
@@ -638,7 +687,6 @@
 | Varnish full configuration | Advanced — optional post-course |
 | Full PWA Studio development | Separate specialized track |
 | Magento Cloud infrastructure | DevOps specialized track |
-| B2B advanced features | Adobe Commerce specialized |
 
 ---
 
@@ -704,6 +752,6 @@
 
 ---
 
-*Document Version: 7.0*
+*Document Version: 7.1*
 *Last Updated: 2026-04-24*
-*21-Topic Structure*
+*23-Topic Structure*

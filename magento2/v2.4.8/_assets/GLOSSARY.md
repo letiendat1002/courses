@@ -1,4 +1,4 @@
-# Magento 2 Zero To Hero - Glossary Template
+# Magento 2 Developer Course — Glossary
 
 ## Purpose
 
@@ -8,7 +8,7 @@ This glossary ensures consistent terminology throughout the course. Each term is
 
 ## How to Use
 
-For each week, add new terms to this master glossary. Use the format:
+For each topic, add new terms to this master glossary. Use the format:
 
 ```
 Term: [word]
@@ -18,13 +18,12 @@ Example: [code snippet or practical use]
 
 ---
 
-## Topic 01: Introduction & Setup
+## Topic 01: Development Environment
 
 | Term | Definition | Example |
 |------|------------|---------|
 | **Magento** | An e-commerce platform written in PHP | Used by online stores worldwide |
 | **Module** | A package of code that extends Magento functionality | `Training_HelloWorld` module |
-| **Theme** | Controls visual appearance of the store | Luma, Blank |
 | **registration.php** | File that registers a module with Magento | `ComponentRegistrar::register()` |
 | **module.xml** | Declares module name and version | `<module name="Vendor_Module" setup_version="1.0.0"/>` |
 | **Docker** | Containerization tool for consistent development environments | `docker-compose up -d` |
@@ -35,7 +34,22 @@ Example: [code snippet or practical use]
 
 ---
 
-## Topic 02: Routing & Controllers
+## Topic 02: Architecture
+
+| Term | Definition | Example |
+|------|------------|---------|
+| **Request Flow** | How Magento routes a URL to a controller | Front controller → router → controller |
+| **Area** | Part of Magento with its own routing/configuration | `frontend`, `adminhtml`, `graphql` |
+| **ObjectManager** | Magento's DI container that instantiates classes | Directly in controllers only |
+| **di.xml** | Dependency injection configuration file | `<type name="..."><plugin name="..."/></type>` |
+| **Virtual Type** | Subclass injected via di.xml configuration | Custom repository extending a base class |
+| **Preference** | Class replacement via di.xml | Replace a core model with a custom one |
+| **Plugin** | Modifies behavior of public methods | Around/before/after modifier |
+| **PHPCS** | PHP Code Sniffer for coding standards | `vendor/bin/phpcs app/code/` |
+
+---
+
+## Topic 03: Module Development
 
 | Term | Definition | Example |
 |------|------------|---------|
@@ -47,12 +61,11 @@ Example: [code snippet or practical use]
 | **Layout** | XML file that defines page structure | `default.xml`, `index_index.xml` |
 | **Handle** | Unique identifier for a page configuration | `default`, `catalog_product_view` |
 | **Container** | Layout element that holds blocks | `<container name="content">` |
-| **Block** | Layout element that renders content | `<block name="product.info">` |
-| **PHPCS** | PHP Code Sniffer for coding standards | `vendor/bin/phpcs app/code/` |
+| **ACL** | Access Control List — permission system | `acl.xml` defines resources |
 
 ---
 
-## Topic 4: Data Layer
+## Topic 04: Data Layer
 
 | Term | Definition | Example |
 |------|------------|---------|
@@ -64,23 +77,13 @@ Example: [code snippet or practical use]
 | **Schema Patch** | Class that modifies database structure | `Setup/Patch/Schema/AddColumn.php` |
 | **EAV** | Entity-Attribute-Value - flexible data model | Product attributes system |
 | **Service Contract** | Interface defining data access API | Repository interfaces in `Api/` |
-
----
-
-## Topic 04: Repositories
-
-| Term | Definition | Example |
-|------|------------|---------|
 | **Repository** | Class that manages data access (CRUD) | `Model/ReviewRepository.php` |
-| **Service Contract** | Interface defining what methods are available | `Api/ReviewRepositoryInterface.php` |
-| **Data Interface** | Interface defining data structure | `Api/Data/ReviewInterface.php` |
 | **Search Criteria** | Object for filtering and sorting queries | `SearchCriteriaBuilder` |
 | **Filter Group** | Groups multiple filters together | Multiple conditions in API calls |
-| **DTO** | Data Transfer Object | Simple object for transferring data |
 
 ---
 
-## Topic 05: Plugins & Observers
+## Topic 05: Customization
 
 | Term | Definition | Example |
 |------|------------|---------|
@@ -90,12 +93,39 @@ Example: [code snippet or practical use]
 | **After Plugin** | Runs after original method | `afterExecute()` |
 | **Observer** | Responds to events dispatched in Magento | Listens for `catalog_product_save_after` |
 | **Event** | Signal that something happened in the system | `customer_register_success` |
-| **Area** | Part of Magento (frontend, adminhtml, crons) | Different configurations per area |
-| **di.xml** | Dependency injection configuration | Defines preferred implementations |
+| **Preference** | Concrete class replacement via di.xml | Replace a core model with custom implementation |
+| **Virtual Type** | Subclass injected via di.xml configuration | Custom logger with environment-specific config |
 
 ---
 
-## Topic 7: APIs
+## Topic 06: Admin UI
+
+| Term | Definition | Example |
+|------|------------|---------|
+| **Admin Route** | URL path for admin controllers | `/admin/review/index/index` |
+| **Menu** | Admin sidebar navigation | `menu.xml` defines item hierarchy |
+| **System Config** | Stores → Configuration page | `system.xml` defines fields |
+| **ACL** | Access Control List for admin resources | `acl.xml` defines permissions |
+| **UI Component** | JavaScript-based admin UI elements | Grid, form, file uploader |
+| **DataProvider** | Provides data to UI Component grids | `Magento\Ui\DataProvider\DataProviderInterface` |
+| **CSRF** | Cross-Site Request Forgery protection | Form tokens in admin |
+| **_isAllowed()** | Controller method that checks ACL | Must call `parent::_isAllowed()` |
+
+---
+
+## Topic 07: Customer Account
+
+| Term | Definition | Example |
+|------|------------|---------|
+| **Customer EAV** | EAV attributes for customer entities | Custom attributes in `customer_attribute` table |
+| **Customer Session** | Persistent customer data across requests | `$customerSession->getCustomer()` |
+| **Registration** | Customer account creation flow | `customer_account_create` event |
+| **Loyalty Program** | Reward points and customer incentives | Configurable point rules |
+| **Customer Segment** | Dynamic customer grouping | Rules-based segment membership |
+
+---
+
+## Topic 07: API Development
 
 | Term | Definition | Example |
 |------|------------|---------|
@@ -105,10 +135,12 @@ Example: [code snippet or practical use]
 | **Webhooks** | HTTP callbacks for events | Outgoing notifications |
 | **API Endpoint** | URL that provides API access | `/rest/default/V1/customers` |
 | **Swagger/OpenAPI** | API documentation format | Generated API docs |
+| **webapi.xml** | WebAPI route configuration | `<route method="GET" url="/V1/products">` |
+| **Rate Limiting** | API request throttling | Per-user or per-IP limits |
 
 ---
 
-## Topic 8: Data Operations
+## Topic 08: Data Operations
 
 | Term | Definition | Example |
 |------|------------|---------|
@@ -121,7 +153,7 @@ Example: [code snippet or practical use]
 
 ---
 
-## Topic 08: Performance
+## Topic 15: Performance
 
 | Term | Definition | Example |
 |------|------------|---------|
@@ -130,9 +162,9 @@ Example: [code snippet or practical use]
 | **Varnish** | HTTP caching proxy | Built-in full page cache |
 | **Redis** | In-memory data store | Cache and session storage |
 | **Profiler** | Tool for measuring performance | Built-in Magento profiler |
-| **Compilation** | Generating factory classes | `bin/magento di:compile` |
-| **AJAX** | Asynchronous JavaScript for dynamic updates | Product price update |
-| **UI Component** | JavaScript-based UI elements | Knockout.js grid |
+| **Full Page Cache** | Caches entire rendered pages | Built-in FPC or Varnish |
+| **Zero-Downtime Deploy** | Deployment without site outage | Database migrations designed for it |
+| **CI/CD** | Continuous Integration / Deployment | Automated testing and deployment pipeline |
 
 ---
 
@@ -177,5 +209,5 @@ When adding new content:
 
 ---
 
-*Document Version: 1.0*  
-*Last Updated: 2026-03-23*
+*Document Version: 2.0*
+*Last Updated: 2026-04-24*

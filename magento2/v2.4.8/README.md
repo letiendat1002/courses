@@ -1,6 +1,6 @@
 # Magento 2 Backend Developer Course
 
-**Focus:** Backend Headless Development | **Version:** 2.4.8 (LTS)
+**Focus:** Backend Development (API-first / Headless) | **Version:** 2.4.8 (LTS)
 
 ---
 
@@ -10,13 +10,11 @@ A comprehensive, self-paced course covering Magento 2 backend development at a m
 
 **Target:** Developers with PHP OOP basics who want to become proficient Magento 2 backend engineers.
 
-**Out of Scope:** Storefront frontend (themes, LESS, Knockout.js, PWA). This course focuses exclusively on Magento backend for headless/API-first architectures.
-
 ---
 
 ## Learning Path
 
-The course is organized into **21 topics**, progressing from fundamentals to advanced patterns. Complete them in order for structured learning, or jump to specific topics as needed.
+The course is organized into **23 topics**, progressing from fundamentals to advanced patterns. Complete them in order for structured learning, or jump to specific topics as needed.
 
 | # | Topic | Directory | Description |
 |---|-------|-----------|-------------|
@@ -28,42 +26,44 @@ The course is organized into **21 topics**, progressing from fundamentals to adv
 | 06 | Admin UI | `06-admin-ui/` | Admin routing, menus, ACL/CSRF security, UI Components, DataProviders, form validation |
 | 07 | API Development | `07-api-development/` | REST/GraphQL endpoints, webapi.xml, authentication, rate limiting, batch operations |
 | 08 | Data Operations | `08-data-ops/` | Import/export, indexer management, cron schedules, message queues, bulk operations |
-| 09 | Performance | `09-performance/` | Full-page cache, block cache, Redis caching, query optimization, profiling tools, zero-downtime deploy |
-| 10 | Checkout | `10-checkout/` | Quote management, inventory reservation, shipping carriers, payment methods, order state machine |
-| 11 | Search & Inventory | `11-search-inventory/` | Elasticsearch architecture, query building, catalog search, Multi-Source Inventory (MSI) |
+| 09 | Performance | `09-performance/` | Full-page cache, block cache, Redis caching, MySQL optimization, profiling tools, zero-downtime deploy, CI/CD |
+| 10 | Checkout | `10-checkout/` | Quote management, inventory reservation, shipping carriers, payment methods, order state machine, session management |
+| 11 | Search & Inventory | `11-search-inventory/` | Elasticsearch architecture, catalog search, Multi-Source Inventory (MSI), source selection algorithm |
 | 12 | Storefront JavaScript | `12-storefront-js/` | KnockoutJS bindings, RequireJS modules/mixins, jQuery widgets, UI Components on frontend |
 | 13 | Layout XML & Templates | `13-storefront-layout/` | Frontend layout handles, PHTML templates, frontend ACL, template hints |
 | 14 | Theming & LESS | `14-storefront-theming/` | LESS compilation, view.xml, parent-child theme inheritance, CSS output |
 | 15 | Advanced Storefront | `15-storefront-advanced/` | Checkout JS customization, payment integration, jQuery widget patterns, third-party themes |
-| 16 | GraphQL & Headless | `16-graphql-headless/` | Custom GraphQL resolvers, schema design, mutations, caching, PWA Studio, Hyvä |
+| 16 | GraphQL & Headless | `16-graphql-headless/` | Custom GraphQL resolvers, schema design, mutations, DataLoader, PWA Studio, Hyvä |
 | 17 | CMS & Extensions | `17-cms-ext/` | CMS blocks/pages, widgets, Page Builder, extension attributes |
 | 18 | Security Hardening | `18-security-hardening/` | SQL injection, CSRF, rate limiting, secret management, 2FA, security headers |
-| 19 | Production Debugging | `19-production-debugging/` | Request tracing, debug.log correlation, query logging, slow API workflows, common errors |
+| 19 | Production Debugging | `19-production-debugging/` | Request tracing, debug.log correlation, error handling patterns, slow API workflows |
 | 20 | Module Packaging | `20-module-packaging/` | composer.json, semantic versioning, metapackage, marketplace submission, email templates |
 | 21 | Unit Testing | `21-unit-testing/` | PHPUnit, unit/integration tests, fixtures, mocking Magento classes, test isolation |
-
-**Reference (not a topic — CE course focus):**
-| | Name | Directory | Description |
-|---|---|---|---|
-| 🗂 | Adobe Commerce Reference | `_reference/adobe-commerce/` | EE/Cloud/B2B features as reference only |
+| 22 | Customer Account | `22-customer-account/` | Customer EAV attributes, registration flow, session management, account management, loyalty programs |
+| 23 | B2B Commerce | `23-b2b-commerce/` | Customer segments, shared catalogs, company accounts, quick order, requisition lists, negotiable quotes |
 
 ---
 
 ## Topic Dependencies
 
 ```
-01 → 02 → 03 → 04 → 05
-                  ↓
-            06-admin-ui → 07-api-dev → 08-data-ops → 09-performance
-                                                              ↓
-                                  11-search-inventory  18-security  19-production
-                                         ↓
-                                   16-graphql (depends on 07)
+# Core backend track
+01 → 02 → 03 → 04 → 05 → 06 → 08-api-dev → 09-data-ops → 10-checkout
+                ↓
+        07-customer-account    (requires 04-data-layer, 06-admin-ui)
 
-05-customization → 06-admin-ui → 17-cms-ext (depends on 06)
-
+# Storefront track (parallel, shares 04, 05 prerequisites)
 05-customization → 12-storefront-js → 13-layout → 14-theming → 15-advanced
-(parallel to backend, same prerequisites)
+
+# Downstream topics
+08-api-dev → 11-search-inventory → 17-graphql
+08-api-dev → 16-performance
+04-data-layer, 06-admin-ui → 07-customer-account
+06-admin-ui → 17-cms-ext
+16-performance → 18-security → 19-production → 20-packaging → 21-unit-testing
+
+# B2B (Adobe Commerce only, can be taken after 04-data-layer + 10-checkout)
+04-data-layer, 10-checkout → 22-customer-account → 23-b2b-commerce
 ```
 
 ---
@@ -77,7 +77,7 @@ By completing this course, you will have:
 - **Customization expertise** — Plugins, observers, dependency injection
 - **Admin development skills** — Full admin UI with ACL and data grids
 - **API capabilities** — REST endpoints, GraphQL, webhook integration
-- **Performance knowledge** — Caching strategies, query optimization, profiling
+- **Performance knowledge** — Caching strategies, MySQL optimization, profiling
 - **Professional tooling** — Unit testing, CI/CD, module packaging
 
 ---
@@ -103,7 +103,7 @@ cd 01-dev-environment
 cat README.md
 
 # Or follow the full learning path sequentially
-for i in {01..21}; do
+for i in {01..23}; do
     dir=$(printf "%02d-*" $i)
     echo "=== Studying $(ls -d $dir 2>/dev/null | head -1) ==="
 done
