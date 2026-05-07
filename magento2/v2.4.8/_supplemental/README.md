@@ -34,6 +34,7 @@ These articles provide deeper coverage on specific topics that may be needed as 
 - `24-coding-standards.md` — PSR-12, ESLint, DocBlock
 - `25-module-overview.md` — Module structure and areas
 - `26-store-hierarchy.md` — Store hierarchy & multi-store architecture (AUTHORITATIVE)
+- `27-media-gallery.md` — Media gallery & catalog images (AUTHORITATIVE)
 
 ---
 
